@@ -16,4 +16,5 @@ class WorkspaceState : ViewModel() {
     var editorAdvanced = false
     var remoteFullscreen = false
     var fullscreenActions = false
+    var keyboardVisible = false
 }

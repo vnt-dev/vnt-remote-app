@@ -122,7 +122,7 @@ class ControllerInstrumentedTest {
                     val controls=activity.findViewById<android.view.ViewGroup>(R.id.remoteActions)
                     val labels=(0 until controls.childCount).mapNotNull {(controls.getChildAt(it) as? android.widget.TextView)?.text?.toString()}
                     assertFalse(labels.any {it=="屏幕" || it=="远端滚动" || it=="退出全屏" || '%' in it})
-                    activity.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.movePicture).performClick()
+                    activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.movePicture).performClick()
                     assertTrue(model.viewState.movePicture)
                     activity.findViewById<android.view.View>(R.id.fullscreenMenu).performClick()
                     assertEquals(android.view.View.VISIBLE,activity.findViewById<android.view.View>(R.id.remoteActionScroll).visibility)

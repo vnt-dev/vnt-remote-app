@@ -13,4 +13,5 @@
     <item name="fullscreenToggle" type="id" />
     <item name="zoomFit" type="id" />
     <item name="pointerMode" type="id" />
+    <item name="keyboardToggle" type="id" />
 </resources>

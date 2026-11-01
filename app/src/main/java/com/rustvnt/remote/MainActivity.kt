@@ -39,7 +39,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var workspaceState: WorkspaceState
     private var remotePage = false
     private var appliedFullscreen: Boolean? = null
-    private var syncingMovePicture = false
     private var centerToast: Toast? = null
     private var textDialog = false
     private var applyingClipboard = false
@@ -64,12 +63,20 @@ class MainActivity : AppCompatActivity() {
         workspace = WorkspaceUi(this, binding, model, workspaceState)
         remotePage = model.info != null
         binding.leaveRemote.setOnClickListener { disconnectDialog() }
+        binding.remoteKeyboard.bind(
+            allowed = { model.canInput && window.decorView.hasWindowFocus() },
+            route = { "${model.epoch}:${model.activeStream}:${model.screen?.optInt("generation")}:${model.revision}" },
+            send = { scan, down -> input.key(scan.code, scan.extended, down) }
+        )
+        binding.remoteKeyboard.close = { showKeyboard(false) }
+        binding.fullscreenKeyboard.setOnClickListener { showKeyboard(!workspaceState.keyboardVisible) }
         binding.fullscreenExit.setOnClickListener { setFullscreen(false) }
-        binding.movePicture.setOnCheckedChangeListener { _,checked ->
-            if(!syncingMovePicture && model.info!=null) {
+        binding.movePicture.setOnClickListener {
+            if(model.info!=null) {
+                val checked=binding.movePicture.isChecked
                 binding.remoteCanvas.movePicture=checked
                 showCenterToast(if(checked)"移动画面已开启：双指滑动移动画面" else "移动画面已关闭：双指滑动滚动远端")
-            }
+            } else updateViewControls()
         }
         binding.fullscreenMenu.setOnClickListener {
             binding.remoteCanvas.release()
@@ -77,7 +84,7 @@ class MainActivity : AppCompatActivity() {
             applyRemoteLayout(true)
         }
         onBackPressedDispatcher.addCallback(this, object: OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { if (remotePage && workspaceState.remoteFullscreen) {setFullscreen(false);return}; if (!remotePage && workspace.goBack()) return; if (model.info != null || model.connecting) disconnectDialog() else finish() }
+            override fun handleOnBackPressed() { if (remotePage && workspaceState.keyboardVisible) { showKeyboard(false); return }; if (remotePage && workspaceState.remoteFullscreen) {setFullscreen(false);return}; if (!remotePage && workspace.goBack()) return; if (model.info != null || model.connecting) disconnectDialog() else finish() }
         })
         buildRemoteActions(); showHome(); update("initial")
         if (Build.VERSION.SDK_INT >= 37 && checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") != PackageManager.PERMISSION_GRANTED) {
@@ -86,6 +93,7 @@ class MainActivity : AppCompatActivity() {
     }
     override fun onStart() { super.onStart(); model.listener = ::update; clipboard.addPrimaryClipChangedListener(clipboardListener); model.foreground(true); update("start") }
     override fun onStop() {
+        binding.remoteKeyboard.cancelComposition()
         centerToast?.cancel();centerToast=null
         binding.remoteCanvas.release(); clipboard.removePrimaryClipChangedListener(clipboardListener)
         if (!isChangingConfigurations) model.foreground(false)
@@ -98,13 +106,31 @@ class MainActivity : AppCompatActivity() {
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus && ::input.isInitialized) binding.remoteCanvas.release()
+        if (!hasFocus && ::input.isInitialized) { binding.remoteKeyboard.cancelComposition(); binding.remoteCanvas.release(); updateKeyboard() }
         if (hasFocus && ::workspaceState.isInitialized && ::binding.isInitialized) {
             appliedFullscreen=null
             applyRemoteLayout(remotePage && (model.info!=null || model.connecting))
+            updateKeyboard()
         }
     }
+    private fun showKeyboard(visible: Boolean) {
+        if (visible && !model.canInput) return
+        binding.remoteCanvas.release()
+        binding.remoteKeyboard.cancelComposition()
+        workspaceState.keyboardVisible = visible
+        updateKeyboard()
+    }
+    private fun updateKeyboard() {
+        if (!remotePage || model.info == null) workspaceState.keyboardVisible = false
+        binding.remoteKeyboard.visibility = if (workspaceState.keyboardVisible) View.VISIBLE else View.GONE
+        binding.remoteKeyboard.sync(model.info?.optString("remoteSystem") ?: "")
+        binding.fullscreenKeyboard.isEnabled = model.canInput
+        binding.fullscreenKeyboard.isSelected = workspaceState.keyboardVisible
+        binding.fullscreenKeyboard.text = if (workspaceState.keyboardVisible) "收起键盘" else "键盘"
+        binding.remoteActions.findViewById<TextView>(R.id.keyboardToggle)?.text = if (workspaceState.keyboardVisible) "收起键盘" else "键盘"
+    }
     private fun setFullscreen(enabled:Boolean) {
+        binding.remoteKeyboard.cancelComposition()
         binding.remoteCanvas.release()
         workspaceState.remoteFullscreen=enabled
         workspaceState.fullscreenActions=false
@@ -131,6 +157,7 @@ class MainActivity : AppCompatActivity() {
         )
         binding.fullscreenMenu.text=if(workspaceState.fullscreenActions)"收起操作" else "操作"
         binding.remoteActions.findViewById<MaterialButton>(R.id.fullscreenToggle)?.visibility=if(fullscreen)View.GONE else View.VISIBLE
+        binding.remoteActions.findViewById<MaterialButton>(R.id.keyboardToggle)?.visibility=if(fullscreen)View.GONE else View.VISIBLE
         if (appliedFullscreen!=fullscreen) {
             // DrawerLayout keeps legacy inset margins after bars disappear; clear them
             // so the video viewport can use the entire window in immersive mode.
@@ -181,6 +208,7 @@ class MainActivity : AppCompatActivity() {
                 else -> true
             }
         }
+        updateKeyboard()
         if (event == "client://clipboard" && model.foreground) {
             model.clipboardText?.let { text ->
                 applyingClipboard=true; lastClipboard=text; clipboard.setPrimaryClip(ClipData.newPlainText("VNT Remote",text)); applyingClipboard=false
@@ -204,6 +232,7 @@ class MainActivity : AppCompatActivity() {
             canvas.trackpad=!canvas.trackpad
             showCenterToast(if(canvas.trackpad) "触控板：按住悬浮左右键可拖动；拖动鼠标底部调整位置" else "直接触控：轻点点击，滑动拖动，长按右键；双指捏合缩放")
         }.apply {id=R.id.pointerMode})
+        actions.addView(button("键盘") {showKeyboard(!workspaceState.keyboardVisible)}.apply {id=R.id.keyboardToggle; tag="input"})
         actions.addView(button("按键") {keyDialog()}.apply{tag="input"})
         actions.addView(button("发送文本") {sendText()}.apply{tag="clipboard"})
         actions.addView(button("剪贴板 ↑") {clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.let {model.clipboard(it)}}.apply{tag="clipboard"})
@@ -221,7 +250,7 @@ class MainActivity : AppCompatActivity() {
         val pointerTitle=if(canvas.trackpad)"触控板" else "直接触控"
         binding.remoteActions.findViewById<TextView>(R.id.pointerMode)?.let {if(it.text.toString()!=pointerTitle)it.text=pointerTitle}
         if(binding.movePicture.isChecked!=canvas.movePicture) {
-            syncingMovePicture=true;binding.movePicture.isChecked=canvas.movePicture;syncingMovePicture=false
+            binding.movePicture.isChecked=canvas.movePicture
         }
         val gestures=if(canvas.movePicture)"双指平移画面 · 捏合缩放" else "双指滚动远端 · 捏合缩放"
         val hint=when {
@@ -245,12 +274,25 @@ class MainActivity : AppCompatActivity() {
     }
     private fun keyDialog() {
         if(!model.canInput){Toast.makeText(this,"当前会话不能输入",Toast.LENGTH_SHORT).show();return}
-        val keys=arrayOf("Esc","Tab","Enter","Backspace","Delete","Ctrl+C","Ctrl+V","Ctrl+A","Alt+Tab","Win / Command","F5","Command+V")
-        MaterialAlertDialogBuilder(this).setTitle("发送按键").setItems(keys){_,i->
-            val sequence=when(i){0->listOf(0x01 to false);1->listOf(0x0f to false);2->listOf(0x1c to false);3->listOf(0x0e to false);4->listOf(0x53 to true);5->listOf(0x1d to false,0x2e to false);6->listOf(0x1d to false,0x2f to false);7->listOf(0x1d to false,0x1e to false);8->listOf(0x38 to false,0x0f to false);9->listOf(0x5b to true);10->listOf(0x3f to false);else->listOf(0x5b to true,0x2f to false)}
+        val mac = model.info?.optString("remoteSystem") == "macos"
+        val meta = RemoteKeyboardState.metaLabel(model.info?.optString("remoteSystem") ?: "")
+        val choices = mutableListOf(
+            "Esc" to listOf(0x01 to false), "Tab" to listOf(0x0f to false),
+            "Enter" to listOf(0x1c to false), "Backspace" to listOf(0x0e to false),
+            "Delete" to listOf(0x53 to true), "Ctrl+C" to listOf(0x1d to false, 0x2e to false),
+            "Ctrl+V" to listOf(0x1d to false, 0x2f to false), "Ctrl+A" to listOf(0x1d to false, 0x1e to false),
+            "${if(mac) "Option" else "Alt"}+Tab" to listOf(0x38 to false, 0x0f to false),
+            meta to listOf(0x5b to true), "F5" to listOf(0x3f to false)
+        )
+        if (mac) choices += "Command+V" to listOf(0x5b to true, 0x2f to false)
+        val route = "${model.epoch}:${model.activeStream}:${model.screen?.optInt("generation")}:${model.revision}"
+        MaterialAlertDialogBuilder(this).setTitle("发送按键").setItems(choices.map { it.first }.toTypedArray()){_,i->
+            if (!model.canInput || route != "${model.epoch}:${model.activeStream}:${model.screen?.optInt("generation")}:${model.revision}") return@setItems
+            val sequence=choices[i].second
             sequence.forEach{input.key(it.first,it.second,true)};sequence.reversed().forEach{input.key(it.first,it.second,false)}
         }.show()
     }
+
     private fun sendText() {
         if(!model.canInput||model.info?.optBoolean("clipboardEnabled")!=true){Toast.makeText(this,"需要允许控制与文本剪贴板",Toast.LENGTH_SHORT).show();return}
         val form=form();val text=field(form,"输入要发送的文本");text.edit.isSingleLine=false;text.edit.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE;text.edit.minLines=3
