@@ -80,7 +80,7 @@ android {
             isEnable = providers.gradleProperty("vnt.splitApks").orNull == "true"
             reset()
             include("arm64-v8a", "x86_64")
-            isUniversalApk = true
+            isUniversalApk = false
         }
     }
     buildFeatures { viewBinding = true }
