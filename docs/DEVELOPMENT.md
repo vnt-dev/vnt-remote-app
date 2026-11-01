@@ -40,7 +40,9 @@ Gradle 自动运行 cargo-ndk，生成两种 ABI。Debug 的 Rust 代码也使�
 
 ## GitHub Actions 打包
 
-工作流为 `.github/workflows/build-apks.yml`：推送到 `main` / `master` 或推送 `v*` 标签均构建正式签名的 Release；也可在 **Actions → Build Android APKs → Run workflow** 手动选择 `debug` / `release`。产物在该次运行的 **Artifacts** 下载，保留 30 天，不自动创建 GitHub Release。
+工作流为 `.github/workflows/build-apks.yml`：推送 `v*` 标签时构建正式签名的 Release，构建和校验成功后自动创建对应的 GitHub Release，并上传三个 APK、`SHA256SUMS` 和 `build-info.txt`，自动生成发布说明。重跑同一标签时更新已有 Release 的同名附件。发布使用工作流自带的 `GITHUB_TOKEN`，构建任务已声明 `contents: write` 权限，无需额外发布 Token。普通分支推送不会触发打包。
+
+也可在 **Actions → Build Android APKs → Run workflow** 手动选择 `debug` / `release`。手动构建只有在选择 `v*` 标签且构建类型为 `release` 时才发布 GitHub Release；其余情况仅上传 Artifacts。所有构建的产物均可在该次运行的 **Artifacts** 下载，保留 30 天。
 
 每次输出 `arm64-v8a`、`x86_64` 独立 APK 和 `universal` 通用 APK，以及 SHA-256 校验和、Android/Rust 提交信息。当前仅支持这两种 64 位架构。工作流运行 `testDebugUnitTest`（当前 AGP 默认仅为 Debug 创建单元测试任务），并检查每个 APK 的签名、实际 ABI、JNI 导出和 16 KB 对齐。标签不会自动修改应用版本；发布前需在 `app/build.gradle.kts` 更新 `versionCode` / `versionName`。
 

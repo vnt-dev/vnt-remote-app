@@ -16,8 +16,8 @@
 
 需要 **Android 7.0 或更新版本**，目前支持 `arm64-v8a` 和 `x86_64` 两种 64 位架构。
 
-1. 打开 [安装包构建页面](https://github.com/vnt-dev/vnt-remote-app/actions/workflows/build-apks.yml)，选择一次成功完成的 Release 打包记录。
-2. 在页面底部的 **Artifacts** 中下载 `VNTRemote-release-…` 压缩包并解压。下载可能需要登录 GitHub，构建产物保留 30 天。
+1. 打开 [Releases 下载页面](https://github.com/vnt-dev/vnt-remote-app/releases)，选择需要的版本。
+2. 在该版本的 **Assets** 中下载 APK；`SHA256SUMS` 可用于校验文件，`build-info.txt` 记录构建源码版本。临时构建也可从 [安装包构建页面](https://github.com/vnt-dev/vnt-remote-app/actions/workflows/build-apks.yml) 的 **Artifacts** 下载 `VNTRemote-release-…` 压缩包，需解压使用，产物保留 30 天，下载可能需要登录 GitHub。
 3. 按下表选择 APK，传到安卓设备后打开安装；如果系统提示，请为下载或文件管理应用开启“允许安装未知应用”。
 
 | 安装包 | 适用设备 |
