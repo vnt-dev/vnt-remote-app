@@ -1,15 +1,29 @@
+# Android Studio / IntelliJ local configuration
+.idea/
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+
+# Build outputs and caches (including module builds and native artifacts)
+.gradle/
+.kotlin/
+build/
+.externalNativeBuild/
+.cxx/
+captures/
+*.apk
+*.aab
+
+# Machine-specific paths and signing credentials
 local.properties
+keystore.properties
+key.properties
+*.jks
+*.keystore
+
+# OS and editor temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+__pycache__/
+*.pyc
