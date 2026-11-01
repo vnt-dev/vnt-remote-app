@@ -1,0 +1,23 @@
+<resources>
+    <color name="vnt_bg">#0F1218</color>
+    <color name="vnt_surface">#161A22</color>
+    <color name="vnt_surface_2">#1D222C</color>
+    <color name="vnt_hover">#1B202A</color>
+    <color name="vnt_border">#252B37</color>
+    <color name="vnt_border_strong">#333A49</color>
+    <color name="vnt_text">#E8EBF2</color>
+    <color name="vnt_text_2">#A2ABBD</color>
+    <color name="vnt_text_3">#6D7688</color>
+    <color name="vnt_brand">#5D7CFF</color>
+    <color name="vnt_brand_hover">#7189FF</color>
+    <color name="vnt_brand_tint">#265D7CFF</color>
+    <color name="vnt_brand_border">#615D7CFF</color>
+    <color name="vnt_ok">#35C584</color>
+    <color name="vnt_ok_tint">#1F35C584</color>
+    <color name="vnt_warn">#E0A33C</color>
+    <color name="vnt_danger">#F06A6E</color>
+    <color name="vnt_danger_tint">#1FF06A6E</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <bool name="vnt_light_system_bars">false</bool>
+</resources>

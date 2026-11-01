@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root" android:fitsSystemWindows="true" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/vnt_bg">
+    <FrameLayout android:id="@+id/workspaceFrame" android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:id="@+id/homePanel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal">
+            <FrameLayout android:id="@+id/sidebarHost" android:layout_width="216dp" android:layout_height="match_parent" android:visibility="gone" />
+            <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical">
+                <LinearLayout android:id="@+id/homeToolbar" android:layout_width="match_parent" android:layout_height="56dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="12dp" android:background="@color/vnt_surface">
+                    <com.google.android.material.button.MaterialButton android:id="@+id/openNavigation" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="打开侧边栏" app:icon="@drawable/ic_menu" app:iconSize="22dp" app:iconTint="@color/vnt_text_2" app:iconPadding="0dp" app:iconGravity="textStart" android:padding="13dp" android:minWidth="0dp" />
+                    <ImageView android:id="@+id/toolbarLogo" android:layout_width="26dp" android:layout_height="26dp" android:src="@drawable/ic_vnt_logo" android:importantForAccessibility="no" android:layout_marginStart="4dp" />
+                    <TextView android:id="@+id/toolbarBrand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="VNT Remote" android:textColor="@color/vnt_text" android:textStyle="bold" android:textSize="15sp" android:layout_marginStart="9dp" />
+                    <TextView android:id="@+id/toolbarPage" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="远程控制" android:textColor="@color/vnt_text_3" android:textSize="12sp" android:gravity="end" android:paddingEnd="6dp" />
+                </LinearLayout>
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/vnt_border" />
+                <ScrollView android:id="@+id/homeScroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:clipToPadding="false">
+                    <LinearLayout android:id="@+id/homeContent" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp" />
+                </ScrollView>
+            </LinearLayout>
+        </LinearLayout>
+    <LinearLayout android:id="@+id/remotePanel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone" android:background="#0F1218" android:theme="@style/ThemeOverlay.VNTRemote.Remote">
+        <LinearLayout android:id="@+id/remoteHeader" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:paddingHorizontal="12dp" android:orientation="horizontal">
+            <com.google.android.material.button.MaterialButton android:id="@+id/leaveRemote" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="断开" />
+            <TextView android:id="@+id/remoteTitle" android:textColor="#E8EBF2" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="远程桌面" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/remoteState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#35C584" android:textSize="11sp" />
+        </LinearLayout>
+        <TextView android:id="@+id/remoteStats" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="10sp" android:textColor="#A2ABBD" android:gravity="center" android:paddingBottom="8dp" />
+        <LinearLayout android:id="@+id/remoteViewport" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <com.rustvnt.remote.RemoteCanvas android:id="@+id/remoteCanvas" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" />
+            <LinearLayout android:id="@+id/fullscreenControls" android:layout_width="72dp" android:layout_height="match_parent" android:orientation="vertical" android:padding="4dp" android:background="#161A22" android:visibility="gone">
+                <com.google.android.material.button.MaterialButton android:id="@+id/fullscreenMenu" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="match_parent" android:layout_height="56dp" android:minWidth="0dp" android:paddingHorizontal="2dp" android:textSize="13sp" android:text="操作" android:textColor="#E8EBF2" android:contentDescription="显示或隐藏远控操作栏" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/fullscreenExit" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="match_parent" android:layout_height="64dp" android:minWidth="0dp" android:paddingHorizontal="2dp" android:textSize="13sp" android:text="退出全屏" android:textColor="#E8EBF2" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:layout_marginTop="12dp" android:text="移动画面" android:textColor="#E8EBF2" android:textSize="12sp" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/movePicture" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_gravity="center_horizontal" android:minWidth="0dp" android:contentDescription="移动画面" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/inputHint" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="#A2ABBD" android:gravity="center" android:padding="8dp" android:text="单指移动 · 轻点点击 · 长按拖动 · 双指滚动 / 缩放" />
+        <HorizontalScrollView android:id="@+id/remoteActionScroll" android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true">
+            <LinearLayout android:id="@+id/remoteActions" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingHorizontal="8dp" />
+        </HorizontalScrollView>
+    </LinearLayout>
+    </FrameLayout>
+    <FrameLayout android:id="@+id/sideDrawer" android:layout_width="264dp" android:layout_height="match_parent" android:layout_gravity="start" android:background="@color/vnt_surface">
+        <LinearLayout android:id="@+id/navigationContent" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/vnt_surface">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center_vertical" android:paddingHorizontal="20dp">
+                <ImageView android:layout_width="34dp" android:layout_height="34dp" android:src="@drawable/ic_vnt_logo" android:importantForAccessibility="no" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="VNT Remote" android:textSize="16sp" android:textStyle="bold" android:textColor="@color/vnt_text" android:layout_marginStart="10dp" />
+            </LinearLayout>
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/vnt_border" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="24dp" android:paddingTop="24dp" android:paddingBottom="8dp" android:text="工作空间" android:textSize="11sp" android:textColor="@color/vnt_text_3" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/navRemote" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginHorizontal="12dp" android:text="远程控制" android:textSize="14sp" android:gravity="start|center_vertical" android:paddingHorizontal="12dp" android:textColor="@color/vnt_text_2" app:icon="@drawable/ic_monitor" app:iconSize="20dp" app:iconPadding="12dp" app:iconTint="@color/vnt_text_2" app:cornerRadius="9dp" android:insetTop="2dp" android:insetBottom="2dp" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/navDevices" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginHorizontal="12dp" android:text="设备列表" android:textSize="14sp" android:gravity="start|center_vertical" android:paddingHorizontal="12dp" android:textColor="@color/vnt_text_2" app:icon="@drawable/ic_list" app:iconSize="20dp" app:iconPadding="12dp" app:iconTint="@color/vnt_text_2" app:cornerRadius="9dp" android:insetTop="2dp" android:insetBottom="2dp" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/navSettings" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginHorizontal="12dp" android:text="设置" android:textSize="14sp" android:gravity="start|center_vertical" android:paddingHorizontal="12dp" android:textColor="@color/vnt_text_2" app:icon="@drawable/ic_settings" app:iconSize="20dp" app:iconPadding="12dp" app:iconTint="@color/vnt_text_2" app:cornerRadius="9dp" android:insetTop="2dp" android:insetBottom="2dp" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/navServers" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginHorizontal="12dp" android:text="服务端" android:textSize="14sp" android:gravity="start|center_vertical" android:paddingHorizontal="12dp" android:textColor="@color/vnt_text_2" app:icon="@drawable/ic_connect" app:iconSize="20dp" app:iconPadding="12dp" app:iconTint="@color/vnt_text_2" app:cornerRadius="9dp" android:insetTop="2dp" android:insetBottom="2dp" />
+            <Space android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/vnt_border" android:layout_marginHorizontal="20dp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="VNT Remote v0.1.0 · Android" android:textSize="11sp" android:textColor="@color/vnt_text_3" android:padding="20dp" android:gravity="center" />
+        </LinearLayout>
+    </FrameLayout>
+</androidx.drawerlayout.widget.DrawerLayout>

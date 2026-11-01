@@ -1,0 +1,19 @@
+<resources>
+    <item name="quickAddress" type="id" />
+    <item name="quickPassword" type="id" />
+    <item name="deviceName" type="id" />
+    <item name="deviceHost" type="id" />
+    <item name="devicePort" type="id" />
+    <item name="deviceSave" type="id" />
+    <item name="serverName" type="id" />
+    <item name="serverAddress" type="id" />
+    <item name="serverRoom" type="id" />
+    <item name="serverConnectionId" type="id" />
+    <item name="serverSave" type="id" />
+    <item name="fullscreenToggle" type="id" />
+    <item name="zoomFit" type="id" />
+    <item name="zoomOriginal" type="id" />
+    <item name="zoomOut" type="id" />
+    <item name="zoomIn" type="id" />
+    <item name="pointerMode" type="id" />
+</resources>

@@ -1,0 +1,2 @@
+-keep class com.rustvnt.remote.NativeBridge { *; }
+-keepclasseswithmembernames,includedescriptorclasses class * { native <methods>; }
