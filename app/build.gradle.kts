@@ -36,6 +36,15 @@ val rustDirectory = providers.gradleProperty("vnt.rustDir").orElse(local.getProp
     ?: rootProject.file("../../RustroverProjects/vnt-remote").absolutePath)
 val androidSdk = local.getProperty("sdk.dir") ?: System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
     ?: error("Set sdk.dir in local.properties or ANDROID_HOME")
+val releaseStore = providers.environmentVariable("ANDROID_KEYSTORE_PATH")
+val releaseStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD")
+val signingValues = listOf(releaseStore, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+val hasReleaseSigning = signingValues.all { it.orNull?.isNotBlank() == true }
+check(signingValues.none { it.orNull?.isNotBlank() == true } || hasReleaseSigning) {
+    "Release signing requires ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD"
+}
 
 android {
     namespace = "com.rustvnt.remote"
@@ -50,8 +59,29 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStore.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
+    }
     buildTypes {
-        release { optimization { enable = true } }
+        release {
+            optimization { enable = true }
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+        }
+    }
+    splits {
+        abi {
+            isEnable = providers.gradleProperty("vnt.splitApks").orNull == "true"
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = true
+        }
     }
     buildFeatures { viewBinding = true }
     compileOptions {

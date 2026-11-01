@@ -1,0 +1,145 @@
+name: Build Android APKs
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: APK build type (release requires signing secrets)
+        type: choice
+        options: [debug, release]
+        default: debug
+      rust_ref:
+        description: Rust core branch, tag or commit (empty uses VNT_RUST_REF or master)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      BUILD_TYPE: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || inputs.build_type || 'release' }}
+      RUST_REPOSITORY: ${{ vars.VNT_RUST_REPOSITORY || 'vnt-dev/vnt-remote' }}
+      RUST_REF: ${{ inputs.rust_ref || vars.VNT_RUST_REF || 'master' }}
+    steps:
+      - name: Check out Android app
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Prepare release signing
+        if: env.BUILD_TYPE == 'release'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing release signing secret: $name (see docs/DEVELOPMENT.md)"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/vnt-release.jks"
+
+      - name: Check out Rust core
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.RUST_REPOSITORY }}
+          ref: ${{ env.RUST_REF }}
+          token: ${{ secrets.VNT_RUST_TOKEN || github.token }}
+          path: rust-core
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Record source revisions
+        shell: bash
+        run: |
+          mkdir -p dist
+          {
+            echo "Android: $GITHUB_SHA"
+            echo "Rust repository: $RUST_REPOSITORY"
+            echo "Rust commit: $(git -C rust-core rev-parse HEAD)"
+            echo "Build type: $BUILD_TYPE"
+          } | tee dist/build-info.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK and NDK
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+
+      - name: Install Rust and cargo-ndk
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Build APKs and run unit tests
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$BUILD_TYPE" == release ]]; then
+            export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/vnt-release.jks"
+          else
+            unset ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD
+          fi
+          variant="${BUILD_TYPE^}"
+          ./gradlew --no-daemon --no-configuration-cache \
+            -Pvnt.rustDir="$GITHUB_WORKSPACE/rust-core" -Pvnt.splitApks=true \
+            ":app:assemble$variant" :app:testDebugUnitTest
+
+      - name: Verify and collect APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for abi in arm64-v8a x86_64 universal; do
+            apk="app/build/outputs/apk/$BUILD_TYPE/app-$abi-$BUILD_TYPE.apk"
+            abis=("$abi")
+            if [[ "$abi" == universal ]]; then abis=(arm64-v8a x86_64); fi
+            python3 scripts/check-native.py "$apk" --abis "${abis[@]}"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
+            cp "$apk" "dist/VNTRemote-$abi-$BUILD_TYPE.apk"
+          done
+          cd dist
+          sha256sum ./*.apk > SHA256SUMS
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v7
+        with:
+          name: VNTRemote-${{ env.BUILD_TYPE }}-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove signing keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vnt-release.jks"

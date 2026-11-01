@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify both packaged ABIs, JNI exports, native media linkage and 16 KB alignment."""
+"""Verify packaged ABIs, JNI exports, native media linkage and 16 KB alignment."""
 import argparse
 import os
 from pathlib import Path
@@ -11,6 +11,8 @@ import zipfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("apk", type=Path)
+parser.add_argument("--abis", nargs="+", default=["arm64-v8a", "x86_64"],
+                    choices=["arm64-v8a", "x86_64"], help="Exact ABIs expected in this APK")
 parser.add_argument("--sdk", type=Path, default=Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk")))
 args = parser.parse_args()
 ndk = args.sdk / "ndk/28.2.13676358/toolchains/llvm/prebuilt"
@@ -18,7 +20,10 @@ toolchain = next(ndk.glob("*/bin/llvm-readelf"))
 nm = toolchain.with_name("llvm-nm")
 expected = {"nativeCreate", "nativeCommand", "nativeInput", "nativeReadAudio", "nativeSurface", "nativeDestroy"}
 with zipfile.ZipFile(args.apk) as apk, tempfile.TemporaryDirectory(prefix="vnt-native-check-") as temp:
-    for abi in ("arm64-v8a", "x86_64"):
+    packaged_abis = {name.split("/")[1] for name in apk.namelist()
+                     if name.startswith("lib/") and name.endswith(".so")}
+    assert packaged_abis == set(args.abis), f"Expected {args.abis}, found {sorted(packaged_abis)}"
+    for abi in args.abis:
         name = f"lib/{abi}/libvnt_remote_android.so"
         info = apk.getinfo(name)
         assert info.compress_type == zipfile.ZIP_STORED, f"{abi}: native library is compressed"
