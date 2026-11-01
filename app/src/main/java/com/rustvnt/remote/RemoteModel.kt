@@ -46,7 +46,14 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
         private set
     var error = ""
         private set
+    private val desktopReasons = mutableMapOf<Int, String>()
+    private var remoteAudioReason = ""
+    private var localAudioReason = ""
     var status = "准备连接"
+        get() = if (info != null && controlOnline) {
+            (desktopReasons[activeStream] ?: desktopReasons[0]).orEmpty()
+                .ifEmpty { localAudioReason }.ifEmpty { remoteAudioReason }.ifEmpty { field }
+        } else field
         private set
     var stats = JSONObject()
         private set
@@ -134,14 +141,21 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
     fun disconnect(notify: Boolean = true) {
         viewState.reset()
         ++probeGeneration; probing = false; command("disconnect"); info = null; screens = JSONArray(); connecting = false
-        controlOnline = false; switching = false; audio.close(); clipboardText = null
+        controlOnline = false; switching = false; audio.close(); remoteAudioReason = ""; localAudioReason = ""; desktopReasons.clear(); clipboardText = null
         if (notify) listener?.invoke("closed")
     }
     fun foreground(visible: Boolean) { foreground = visible; command("foreground") { put("visible", visible) }; updateAudio() }
     private fun updateAudio() {
-        if (foreground && info?.optBoolean("audioEnabled") == true) audio.start(bridge) { reason ->
-            main.post { status = "声音：$reason"; listener?.invoke("audioError") }
-        } else audio.close()
+        if (foreground && info?.optBoolean("audioEnabled") == true) {
+            val playbackEpoch = epoch
+            audio.start(bridge) { reason ->
+                main.post {
+                    if (epoch == playbackEpoch && foreground && info != null) {
+                        localAudioReason = "声音：$reason"; listener?.invoke("audioError")
+                    }
+                }
+            }
+        } else { audio.close(); localAudioReason = "" }
     }
     fun chooseScreen(id: Int) {
         if (id == activeStream) return
@@ -155,6 +169,7 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
         if (event == "client://closed" && probing) return
         val value = JSONObject(payload)
         if (event == "client://connecting") {
+            audio.close(); remoteAudioReason = ""; localAudioReason = ""; desktopReasons.clear()
             probing = false; epoch = value.getLong("epoch"); connecting = true; info = null; controlOnline = false; switching = false
             // Decoder fallback also starts a new epoch, without going through connect().
             screens = JSONArray(); activeStream = 0; revision = 0
@@ -176,7 +191,7 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
                 if (!receivedControlState) controlOnline = true
                 status = if (!controlOnline) "连接恢复中…" else if (viewOnly) "仅观看" else "已连接"; updateAudio()
             }
-            "client://closed" -> { viewState.reset(); info = null; connecting = false; controlOnline = false; switching = false; status = value.optString("reason", "连接已结束"); audio.close() }
+            "client://closed" -> { viewState.reset(); info = null; connecting = false; controlOnline = false; switching = false; status = value.optString("reason", "连接已结束"); audio.close(); remoteAudioReason = ""; localAudioReason = ""; desktopReasons.clear() }
             "client://error" -> { switching = false; error = value.optString("reason"); if (connecting && info == null) connecting = false }
             "client://stats" -> stats = value
             "client://renderStats" -> renderStats = value
@@ -184,7 +199,11 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
             "client://clipboard" -> clipboardText = value.optString("text")
             "client://paste" -> if (!value.optBoolean("success")) error = value.optString("reason","远端粘贴失败")
             "client://fallback" -> status = "正在切换兼容解码器…"
-            "client://audio" -> if (!value.optBoolean("available") && value.optBoolean("enabled")) status = value.optString("reason")
+            "client://audio" -> {
+                val reason = if (value.optBoolean("enabled") && !value.optBoolean("available")) value.optString("reason") else ""
+                if (reason != remoteAudioReason) android.util.Log.i("VntAudio", "Remote audio available=${value.optBoolean("available")}, reason=$reason")
+                remoteAudioReason = reason
+            }
             "client://media" -> when (value.optString("type")) {
                 "screensState" -> { receivedScreensState = true; screens = value.getJSONArray("screens"); activeStream = value.optInt("activeStreamId"); revision = value.optLong("revision"); switching = false }
                 "streamInfo" -> {
@@ -197,7 +216,11 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
                     controlOnline = value.optBoolean("available"); if (!controlOnline) { status = "连接恢复中…"; command("resetInput") }
                     else status = if (viewOnly) "仅观看" else "已连接"
                 }
-                "desktopState" -> if (!value.optBoolean("ready", true)) status = value.optString("reason", "远端桌面切换中")
+                "desktopState" -> {
+                    val streamId = value.optInt("streamId", 0)
+                    if (value.optBoolean("ready", true)) desktopReasons.remove(streamId)
+                    else desktopReasons[streamId] = value.optString("reason").ifEmpty { "远端桌面切换中" }
+                }
             }
         }
         listener?.invoke(event)

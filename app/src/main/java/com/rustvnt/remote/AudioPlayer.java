@@ -2,9 +2,9 @@ package com.rustvnt.remote;
 
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
-import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.Process;
+import android.util.Log;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,10 +34,21 @@ public final class AudioPlayer implements AutoCloseable {
                 track = output;
                 ByteBuffer buffer = ByteBuffer.allocateDirect(3840).order(ByteOrder.nativeOrder());
                 output.play();
+                Log.i("VntAudio", "AudioTrack started: 48000 Hz stereo float");
+                boolean receivedPcm = false;
+                long waitingSince = System.nanoTime();
+                boolean reportedWait = false;
                 while (running.get()) {
                     buffer.clear();
                     int bytes = bridge.readAudio(buffer);
-                    if (bytes == 0) { LockSupport.parkNanos(2_000_000); continue; }
+                    if (bytes == 0) {
+                        if (!receivedPcm && !reportedWait && System.nanoTime() - waitingSince >= 5_000_000_000L) {
+                            Log.w("VntAudio", "AudioTrack ready but no decoded PCM received for 5 seconds");
+                            reportedWait = true;
+                        }
+                        LockSupport.parkNanos(2_000_000); continue;
+                    }
+                    if (!receivedPcm) { Log.i("VntAudio", "First decoded PCM received: " + bytes + " bytes"); receivedPcm = true; }
                     buffer.limit(bytes);
                     while (running.get() && buffer.hasRemaining()) {
                         int wrote = output.write(buffer, buffer.remaining(), AudioTrack.WRITE_NON_BLOCKING);
@@ -46,6 +57,7 @@ public final class AudioPlayer implements AutoCloseable {
                     }
                 }
             } catch (RuntimeException e) {
+                Log.e("VntAudio", "Local audio playback failed", e);
                 if (running.get()) failure.accept(e.getMessage() == null ? "音频设备不可用" : e.getMessage());
             } finally {
                 running.set(false); track = null;

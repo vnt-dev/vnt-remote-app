@@ -15,7 +15,7 @@ class RemoteModelEventInstrumentedTest {
     private fun withModel(test: (RemoteModel) -> Unit) {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val model = RemoteModel(ApplicationProvider.getApplicationContext<Application>())
-            try { model.foreground(true); test(model) } finally { model.bridge.close() }
+            try { model.foreground(true); test(model) } finally { model.disconnect(false); model.bridge.close() }
         }
     }
     private fun screen(id: Int, generation: Int) = JSONObject()
@@ -78,4 +78,93 @@ class RemoteModelEventInstrumentedTest {
         screens(model, 2, 1, 1, 2)
         assertEquals(2, model.screen!!.getInt("generation"))
     }
+    @Test fun audioRecoveryClearsInitializationAndPreservesControlStatus() = withModel { model ->
+        connecting(model, 1)
+        connected(model, 1)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":false,"reason":"正在初始化系统音频"}""")
+        assertEquals("正在初始化系统音频", model.status)
+        model.onEvent("client://media", """{"epoch":1,"type":"transportState","kind":0,"available":false}""")
+        assertEquals("连接恢复中…", model.status)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":true}""")
+        assertEquals("连接恢复中…", model.status)
+        model.onEvent("client://media", """{"epoch":1,"type":"transportState","kind":0,"available":true}""")
+        assertEquals("已连接", model.status)
+    }
+
+    @Test fun audioStateSurvivesHandshakeAndResetsOnNewEpoch() = withModel { model ->
+        connecting(model, 1)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":false,"reason":"正在初始化系统音频"}""")
+        connected(model, 1)
+        assertEquals("正在初始化系统音频", model.status)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":true}""")
+        assertEquals("已连接", model.status)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":false,"reason":"旧会话音频错误"}""")
+        connecting(model, 2)
+        connected(model, 2)
+        assertEquals("已连接", model.status)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":false,"reason":"过期错误"}""")
+        assertEquals("已连接", model.status)
+    }
+
+    private fun desktop(model: RemoteModel, ready: Boolean, streamId: Int? = null, epoch: Long = 1) {
+        val value = JSONObject().put("epoch", epoch).put("type", "desktopState")
+            .put("ready", ready).put("reason", if (ready) "" else "等待普通桌面画面")
+        if (streamId != null) value.put("streamId", streamId)
+        model.onEvent("client://media", value.toString())
+    }
+
+    @Test fun desktopRecoveryClearsWaitingAndPreservesControlOutage() = withModel { model ->
+        connecting(model, 1)
+        connected(model, 1)
+        desktop(model, false)
+        assertEquals("等待普通桌面画面", model.status)
+        desktop(model, true)
+        assertEquals("已连接", model.status)
+        desktop(model, false)
+        model.onEvent("client://media", """{"epoch":1,"type":"transportState","kind":0,"available":false}""")
+        desktop(model, true)
+        assertEquals("连接恢复中…", model.status)
+        model.onEvent("client://media", """{"epoch":1,"type":"transportState","kind":0,"available":true}""")
+        assertEquals("已连接", model.status)
+    }
+
+    @Test fun desktopRecoveryKeepsAudioWarningAndViewOnlyStatus() = withModel { model ->
+        connecting(model, 1)
+        model.onEvent("client://connected", """{"epoch":1,"viewOnly":true,"screens":[]}""")
+        desktop(model, false)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":false,"reason":"系统声音不可用"}""")
+        desktop(model, true)
+        assertEquals("系统声音不可用", model.status)
+        model.onEvent("client://audio", """{"epoch":1,"enabled":true,"available":true}""")
+        assertEquals("仅观看", model.status)
+    }
+
+    @Test fun desktopStateIsScopedToScreenAndSurvivesHandshake() = withModel { model ->
+        connecting(model, 1)
+        desktop(model, false, 1)
+        connected(model, 1)
+        assertEquals("等待普通桌面画面", model.status)
+        desktop(model, true, 2)
+        assertEquals("等待普通桌面画面", model.status)
+        desktop(model, true, 1)
+        assertEquals("已连接", model.status)
+        desktop(model, false, 2)
+        assertEquals("已连接", model.status)
+        screens(model, 1, 2, 2, 1)
+        assertEquals("等待普通桌面画面", model.status)
+        desktop(model, true, 2)
+        assertEquals("已连接", model.status)
+    }
+
+    @Test fun newEpochClearsDesktopWaitingAndRejectsStaleDesktopEvents() = withModel { model ->
+        connecting(model, 1)
+        connected(model, 1)
+        desktop(model, false, 1)
+        connecting(model, 2)
+        connected(model, 2)
+        assertEquals("已连接", model.status)
+        desktop(model, false, 1, epoch = 1)
+        assertEquals("已连接", model.status)
+    }
+
 }
