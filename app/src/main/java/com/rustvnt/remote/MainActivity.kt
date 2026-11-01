@@ -255,7 +255,7 @@ class MainActivity : AppCompatActivity() {
         val gestures=if(canvas.movePicture)"双指平移画面 · 捏合缩放" else "双指滚动远端 · 捏合缩放"
         val hint=when {
             model.viewOnly && model.info!=null -> if(canvas.movePicture)"仅观看 · 双指平移画面 · 捏合缩放" else "仅观看 · 捏合缩放 · 开启移动画面可双指平移"
-            canvas.trackpad -> "单指移动 · 轻点点击 · 按住悬浮左右键拖动 · 拖动底部调整位置 · $gestures"
+            canvas.trackpad -> "单指移动 · 点击悬浮鼠标左右键 · 按住按键拖动 · 拖动底部调整位置 · $gestures"
             else -> "轻点点击 · 滑动拖动 · 长按右键 · $gestures"
         }
         if(binding.inputHint.text.toString()!=hint)binding.inputHint.text=hint

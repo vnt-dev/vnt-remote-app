@@ -40,6 +40,8 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
         private set
     var controlOnline = false
         private set
+    private var receivedScreensState = false
+    private var receivedControlState = false
     var switching = false
         private set
     var error = ""
@@ -154,15 +156,25 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
         val value = JSONObject(payload)
         if (event == "client://connecting") {
             probing = false; epoch = value.getLong("epoch"); connecting = true; info = null; controlOnline = false; switching = false
+            // Decoder fallback also starts a new epoch, without going through connect().
+            screens = JSONArray(); activeStream = 0; revision = 0
+            receivedScreensState = false; receivedControlState = false
             status = if (value.optBoolean("softwareFallback")) "正在连接 · H.264 软件解码" else "正在连接…"
         } else if (value.has("epoch") && value.getLong("epoch") != epoch) {
             if (connecting && value.getLong("epoch") > epoch && event in listOf("client://error", "client://closed")) epoch = value.getLong("epoch") else return
         }
         when (event) {
             "client://connected" -> {
-                info = value; screens = value.getJSONArray("screens"); connecting = false; controlOnline = true
-                if (activeStream == 0 || screen == null) activeStream = screens.optJSONObject(0)?.optInt("streamId") ?: 0
-                status = if (viewOnly) "仅观看" else "已连接"; updateAudio()
+                info = value; connecting = false
+                // Media callbacks can arrive before this handshake snapshot. Keep their
+                // current route: native input rejects stale generation/revision pairs.
+                if (!receivedScreensState) {
+                    screens = value.getJSONArray("screens")
+                    activeStream = (0 until screens.length()).map { screens.getJSONObject(it) }
+                        .firstOrNull { it.optBoolean("available") }?.optInt("streamId") ?: 0
+                }
+                if (!receivedControlState) controlOnline = true
+                status = if (!controlOnline) "连接恢复中…" else if (viewOnly) "仅观看" else "已连接"; updateAudio()
             }
             "client://closed" -> { viewState.reset(); info = null; connecting = false; controlOnline = false; switching = false; status = value.optString("reason", "连接已结束"); audio.close() }
             "client://error" -> { switching = false; error = value.optString("reason"); if (connecting && info == null) connecting = false }
@@ -174,13 +186,14 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
             "client://fallback" -> status = "正在切换兼容解码器…"
             "client://audio" -> if (!value.optBoolean("available") && value.optBoolean("enabled")) status = value.optString("reason")
             "client://media" -> when (value.optString("type")) {
-                "screensState" -> { screens = value.getJSONArray("screens"); activeStream = value.optInt("activeStreamId"); revision = value.optLong("revision"); switching = false }
+                "screensState" -> { receivedScreensState = true; screens = value.getJSONArray("screens"); activeStream = value.optInt("activeStreamId"); revision = value.optLong("revision"); switching = false }
                 "streamInfo" -> {
                     (0 until screens.length()).map { screens.getJSONObject(it) }.firstOrNull { it.optInt("streamId") == value.optInt("streamId") }?.let { screen ->
                         listOf("generation", "width", "height", "codec", "fps").forEach { if (value.has(it)) screen.put(it, value.get(it)) }
                     }
                 }
                 "transportState" -> if (value.optInt("kind") == 0) {
+                    receivedControlState = true
                     controlOnline = value.optBoolean("available"); if (!controlOnline) { status = "连接恢复中…"; command("resetInput") }
                     else status = if (viewOnly) "仅观看" else "已连接"
                 }

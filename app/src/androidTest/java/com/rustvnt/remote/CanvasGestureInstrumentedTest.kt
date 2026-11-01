@@ -63,6 +63,24 @@ class CanvasGestureInstrumentedTest {
             f.view.release()
         }}
     }
+    @Test fun trackpadPictureTapsNeverClickAndSingleFingerStillMoves() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->scenario.onActivity { activity ->
+            for(movePicture in listOf(false,true)) {
+                val f=Fixture(activity);f.view.movePicture=movePicture;f.sink.events.clear()
+                val x=f.state.cursorX;val y=f.state.cursorY
+                f.touch(MotionEvent.ACTION_DOWN,600f to 200f)
+                f.touch(MotionEvent.ACTION_UP,600f to 200f)
+                assertTrue("A picture tap must not send remote input",f.sink.events.isEmpty())
+                assertEquals(x,f.state.cursorX,0f);assertEquals(y,f.state.cursorY,0f)
+                f.touchIds(MotionEvent.ACTION_DOWN,listOf(0 to (600f to 200f)),400)
+                f.touch(MotionEvent.ACTION_MOVE,700f to 200f)
+                f.touch(MotionEvent.ACTION_UP,700f to 200f)
+                assertTrue(f.sink.events.any {it.kind=="move"})
+                assertTrue(f.sink.events.none {it.kind=="button" || it.kind=="wheel"})
+                f.view.release()
+            }
+        }}
+    }
     @Test fun directInputUsesTheZoomedAndPannedSurfaceCoordinates() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->scenario.onActivity { activity ->
             val f=Fixture(activity);f.view.trackpad=false;f.state.original();f.state.panBy(-100f,30f);f.view.refreshView();f.layout();f.sink.events.clear()
@@ -238,7 +256,7 @@ class CanvasGestureInstrumentedTest {
             f.touchIds(MotionEvent.ACTION_MOVE,listOf(1 to (700f to 450f)))
             f.touchIds(MotionEvent.ACTION_UP,listOf(1 to (700f to 450f)))
             assertTrue(f.sink.events.drop(before).none {it.kind in listOf("button","move","wheel")})
-            f.sink.events.clear();f.touch(MotionEvent.ACTION_DOWN,q);f.touch(MotionEvent.ACTION_UP,q)
+            f.sink.events.clear();f.touch(MotionEvent.ACTION_DOWN,p);f.touch(MotionEvent.ACTION_UP,p)
             assertEquals(listOf(true,false),f.sink.events.filter {it.kind=="button"}.map {it.down});f.view.release()
         }}
     }

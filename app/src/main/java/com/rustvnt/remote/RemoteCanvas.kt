@@ -134,9 +134,8 @@ class RemoteCanvas @JvmOverloads constructor(context: Context, attrs: AttributeS
     private val gesture=GestureDetector(context,object:GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e:MotionEvent)=true // A second finger may still turn this into local navigation.
         override fun onSingleTapUp(e:MotionEvent):Boolean {
-            if(multitouch || input?.enabled!=true)return true
-            if(trackpad) {state.followCursor(24*resources.displayMetrics.density);changed();input?.move(state.cursorX,state.cursorY)}
-            else if(!directStarted || !moveTo(e.x,e.y))return true
+            if(multitouch || input?.enabled!=true || trackpad)return true
+            if(!directStarted || !moveTo(e.x,e.y))return true
             input?.click();return true
         }
         override fun onLongPress(e:MotionEvent) {
