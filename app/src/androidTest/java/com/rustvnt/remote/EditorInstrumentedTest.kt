@@ -61,7 +61,7 @@ class EditorInstrumentedTest {
             scenario.onActivity { activity ->
                 activity.findViewById<View>(R.id.navServers).performClick()
                 find(activity.window.decorView,"添加配置")!!.performClick()
-                assertEquals("vnt2.rustvnt.com:29875",activity.findViewById<EditText>(R.id.serverAddress).text.toString())
+                assertEquals("vnt2.rustvnt.com:29872",activity.findViewById<EditText>(R.id.serverAddress).text.toString())
                 generated=activity.findViewById<EditText>(R.id.serverConnectionId).text.toString()
                 assertTrue(generated.matches(Regex("[1-9][0-9]{8}")))
                 activity.findViewById<EditText>(R.id.serverName).setText("测试默认网络")
@@ -76,7 +76,7 @@ class EditorInstrumentedTest {
                 val profile=model.profiles.getJSONObject(index)
                 assertFalse(profile.getBoolean("enabled"))
                 assertEquals(generated,profile.getString("connectionId"))
-                assertEquals("vnt2.rustvnt.com:29875",profile.getJSONArray("servers").getString(0))
+                assertEquals("vnt2.rustvnt.com:29872",profile.getJSONArray("servers").getString(0))
                 model.deleteProfile(index)
             }
         }

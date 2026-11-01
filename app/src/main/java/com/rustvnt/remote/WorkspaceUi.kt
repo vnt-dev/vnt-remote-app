@@ -39,7 +39,7 @@ class WorkspaceUi(
     private fun editDevice(value: JSONObject?) { state.editor=JSONObject((value ?: JSONObject()).toString()); state.editorAdvanced=false; showPage(4) }
     private fun editServer(value: JSONObject?) {
         state.editor=if(value!=null) JSONObject(value.toString()) else JSONObject()
-            .put("servers",JSONArray().put("vnt2.rustvnt.com:29875"))
+            .put("servers",JSONArray().put("vnt2.rustvnt.com:29872"))
             .put("connectionId",(100_000_000 + java.security.SecureRandom().nextInt(900_000_000)).toString())
             .put("enabled",false)
         showPage(5)
