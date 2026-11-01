@@ -44,7 +44,7 @@ Gradle 自动运行 cargo-ndk，生成两种 ABI。Debug 的 Rust 代码也使�
 
 也可在 **Actions → Build Android APKs → Run workflow** 手动选择 `debug` / `release`。手动构建只有在选择 `v*` 标签且构建类型为 `release` 时才发布 GitHub Release；其余情况仅上传 Artifacts。所有构建的产物均可在该次运行的 **Artifacts** 下载，保留 30 天。
 
-每次输出 `arm64-v8a`、`x86_64` 独立 APK 和 `universal` 通用 APK，以及 SHA-256 校验和、Android/Rust 提交信息。当前仅支持这两种 64 位架构。工作流运行 `testDebugUnitTest`（当前 AGP 默认仅为 Debug 创建单元测试任务），并检查每个 APK 的签名、实际 ABI、JNI 导出和 16 KB 对齐。标签不会自动修改应用版本；发布前需在 `app/build.gradle.kts` 更新 `versionCode` / `versionName`。
+每次输出 `arm64-v8a`、`x86_64` 独立 APK 和 `universal` 通用 APK，以及 SHA-256 校验和、Android/Rust 提交信息。当前仅支持这两种 64 位架构。工作流运行 `testDebugUnitTest`（当前 AGP 默认仅为 Debug 创建单元测试任务），并检查每个 APK 的签名、实际 ABI、JNI 导出和 16 KB 对齐。标签不会自动修改应用版本；发布前需在 `app/build.gradle.kts` 递增 `versionCode`、更新 `versionName`，并使用与 `versionName` 一致的 `vMAJOR.MINOR.PATCH` 标签（例如 `v0.2.0`）。设置页通过当前仓库的 GitHub Releases latest API 检查正式版，以语义版本比较标签与实际安装的 `versionName`，不按发布时间判断升级。预发布不会推送给正式版用户。保留现有 APK 附件命名，以便按设备 ABI 选择下载；没有对应架构时回退到 universal 包。下载通过外部浏览器完成，安装仍由用户确认。
 
 在仓库 **Settings → Secrets and variables → Actions** 配置下列参数。
 

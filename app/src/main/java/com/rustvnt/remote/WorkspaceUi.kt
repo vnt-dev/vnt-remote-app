@@ -27,6 +27,8 @@ class WorkspaceUi(
     private val state: WorkspaceState,
 ) {
     private val ui = DesktopWidgets(activity)
+    private var updateButton: MaterialButton? = null
+    private val updates = ReleaseUpdateController(activity) { updateCheckButton() }
     private val titles = listOf("远程控制", "设备列表", "设置", "服务端")
     private val wide = activity.resources.configuration.screenWidthDp >= 840
     private val navigation = listOf(binding.navRemote,binding.navDevices,binding.navSettings,binding.navServers)
@@ -86,7 +88,7 @@ class WorkspaceUi(
     }
     fun render() {
         val content=binding.homeContent;content.removeAllViews()
-        connectButton=null;progress=null;connectionStatus=null
+        connectButton=null;progress=null;connectionStatus=null;updateButton=null
         val editing=state.page==4 || state.page==5
         binding.sidebarHost.visibility=if(wide && !editing)View.VISIBLE else View.GONE
         binding.openNavigation.visibility=if(!wide || editing)View.VISIBLE else View.GONE
@@ -339,8 +341,14 @@ class WorkspaceUi(
             addView(ui.button(action,DesktopWidgets.ButtonKind.SECONDARY,R.drawable.ic_plus,clicked))
         }
     }
+    private fun updateCheckButton() {
+        updateButton?.apply {
+            isEnabled=!updates.checking
+            text=if(updates.checking)"正在检查…" else "检查更新"
+        }
+    }
     private fun settings(content:LinearLayout) {
-        ui.heading(content,"设置","设置应用外观。")
+        ui.heading(content,"设置","设置应用外观与检查更新。")
         ui.panel(content) {
             ui.cardHeading(this,"通用",glyph=R.drawable.ic_settings)
             addView(ui.label("主题",14f,bold=true));ui.space(this,4)
@@ -348,8 +356,14 @@ class WorkspaceUi(
             ui.segments(this,listOf("浅色","深色","跟随系统"),listOf("light","dark","system").indexOf(Appearance.mode(activity)).coerceAtLeast(0)) {Appearance.set(activity,listOf("light","dark","system")[it])}
         }
         ui.panel(content) {
-            ui.cardHeading(this,"VNT Remote","v0.1.0 · Android 主控",R.drawable.ic_monitor)
+            ui.cardHeading(this,"VNT Remote","${updates.currentVersion} · Android 主控",R.drawable.ic_monitor)
             addView(ui.label("进入后台会暂停画面与声音，返回前台恢复连接。",13f,R.color.vnt_text_2))
+            ui.space(this,12)
+            addView(ui.label("从 GitHub 获取最新正式版本，下载后安装更新。",12f,R.color.vnt_text_2))
+            ui.space(this,8)
+            updateButton=ui.button("检查更新",DesktopWidgets.ButtonKind.SECONDARY) { updates.check() }
+            addView(updateButton)
+            updateCheckButton()
         }
     }
 }
