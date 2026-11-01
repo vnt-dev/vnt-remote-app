@@ -15,6 +15,9 @@ class RemoteViewState {
     var centerY = .5f; private set
     var cursorX = .5f; private set
     var cursorY = .5f; private set
+    // Fractions of the available overlay travel; null means the default bottom-right inset.
+    var floatingMouseX: Float? = null
+    var floatingMouseY: Float? = null
     var trackpad = true
     var movePicture = false
     private var epoch = 0L
@@ -23,6 +26,7 @@ class RemoteViewState {
     val scale: Float get() = if(fitting) fitScale else manualScale
 
     fun reset() {
+        floatingMouseX=null;floatingMouseY=null
         epoch=0;stream=0;trackpad=true;movePicture=false;cursorX=.5f;cursorY=.5f;fit()
     }
     fun source(session:Long, streamId:Int, width:Int, height:Int):Boolean {
@@ -30,7 +34,7 @@ class RemoteViewState {
         if(epoch==session && stream==streamId && remoteWidth==width && remoteHeight==height)return false
         val newSession=epoch!=session
         epoch=session;stream=streamId;remoteWidth=width;remoteHeight=height
-        if(newSession){movePicture=false;cursorX=.5f;cursorY=.5f}
+        if(newSession){floatingMouseX=null;floatingMouseY=null;movePicture=false;cursorX=.5f;cursorY=.5f}
         fit();return true
     }
     fun resize(width:Int,height:Int) {viewWidth=width.coerceAtLeast(0);viewHeight=height.coerceAtLeast(0)}

@@ -57,4 +57,13 @@ class RemoteViewStateTest {
         assertEquals(.25f,point.first,.00001f);assertEquals(.75f,point.second,.00001f)
         assertNull(rect.point(rect.left-1,rect.top))
     }
+    @Test fun floatingMousePositionBelongsToTheSessionRatherThanTheStreamOrWindow() {
+        val s=state();s.floatingMouseX=.2f;s.floatingMouseY=.7f
+        s.resize(500,1000);s.source(1,2,1920,1080)
+        assertEquals(.2f,s.floatingMouseX!!,0f);assertEquals(.7f,s.floatingMouseY!!,0f)
+        s.source(2,1,1920,1080);assertNull(s.floatingMouseX);assertNull(s.floatingMouseY)
+        s.floatingMouseX=.3f;s.floatingMouseY=.4f;s.reset()
+        assertNull(s.floatingMouseX);assertNull(s.floatingMouseY)
+    }
+
 }

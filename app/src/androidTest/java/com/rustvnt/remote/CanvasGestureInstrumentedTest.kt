@@ -25,21 +25,25 @@ class CanvasGestureInstrumentedTest {
     }
     private class Fixture(activity:MainActivity) {
         val sink=Sink()
-        val state=RemoteViewState().apply {source(1,1,2000,1200)}
+        val state=RemoteViewState().apply {source(1,1,2000,1200);floatingMouseX=0f;floatingMouseY=0f}
         val view=RemoteCanvas(activity).apply {attachInput(state,sink)}
         private var time=SystemClock.uptimeMillis()
         private var start=time
         init {layout()}
-        fun layout() {
-            view.measure(View.MeasureSpec.makeMeasureSpec(1000,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(600,View.MeasureSpec.EXACTLY))
-            view.layout(0,0,1000,600)
+        fun layout(w:Int=1000,h:Int=600) {
+            view.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY))
+            view.layout(0,0,w,h)
         }
         fun touch(action:Int,vararg points:Pair<Float,Float>) {
-            time+=32;if(action==MotionEvent.ACTION_DOWN)start=time
-            val properties=Array(points.size){i->MotionEvent.PointerProperties().apply{id=i;toolType=MotionEvent.TOOL_TYPE_FINGER}}
+            touchIds(action,points.mapIndexed {i,p->i to p},32)
+        }
+        fun touchIds(action:Int, contacts:List<Pair<Int,Pair<Float,Float>>>,elapsed:Long=32) {
+            time+=elapsed;if(action==MotionEvent.ACTION_DOWN)start=time
+            val points=contacts.map {it.second}
+            val properties=Array(points.size){i->MotionEvent.PointerProperties().apply{id=contacts[i].first;toolType=MotionEvent.TOOL_TYPE_FINGER}}
             val coords=Array(points.size){i->MotionEvent.PointerCoords().apply{x=points[i].first;y=points[i].second;pressure=1f;size=1f}}
             val event=MotionEvent.obtain(start,time,action,points.size,properties,coords,0,0,1f,1f,0,0,InputDevice.SOURCE_TOUCHSCREEN,0)
-            view.onTouchEvent(event);event.recycle()
+            view.dispatchTouchEvent(event);event.recycle()
         }
         fun pinch() {
             touch(MotionEvent.ACTION_DOWN,350f to 250f)
@@ -126,4 +130,151 @@ class CanvasGestureInstrumentedTest {
             assertTrue(f.sink.events.none{it.kind=="move" || it.kind=="button" || it.kind=="wheel"});f.view.release()
         }}
     }
+    private fun Fixture.buttonPoint(button:Int):Pair<Float,Float> {
+        val b=view.floatingMouseBounds
+        return (b.left+b.width()*(if(button==1).25f else .75f)) to (b.top+b.height()*.3f)
+    }
+    @Test fun floatingButtonsClickHoldAndDragWithoutExtraClicks() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            for(button in 1..2) {
+                val f=Fixture(activity);val p=f.buttonPoint(button);val bounds=f.view.floatingMouseBounds
+                f.touch(MotionEvent.ACTION_DOWN,p)
+                assertEquals(listOf(true),f.sink.events.filter {it.kind=="button"}.map {it.down})
+                f.touchIds(MotionEvent.ACTION_MOVE,listOf(0 to p),1200)
+                assertEquals(1,f.sink.events.count {it.kind=="button"})
+                val x=f.state.cursorX
+                f.touch(MotionEvent.ACTION_MOVE,(p.first+80) to p.second)
+                assertTrue(f.state.cursorX>x);assertEquals(bounds,f.view.floatingMouseBounds)
+                f.touch(MotionEvent.ACTION_UP,(p.first+80) to p.second)
+                assertEquals(listOf(true,false),f.sink.events.filter {it.kind=="button"}.map {it.down})
+                assertTrue(f.sink.events.filter {it.kind=="button"}.all {it.x==button.toFloat()})
+                f.sink.events.clear();f.touch(MotionEvent.ACTION_DOWN,p);f.touch(MotionEvent.ACTION_UP,p)
+                assertEquals(listOf(true,false),f.sink.events.filter {it.kind=="button"}.map {it.down});f.view.release()
+            }
+        }}
+    }
+    @Test fun pictureFingerHasPriorityAndHandoffDoesNotJump() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            val f=Fixture(activity);val p=f.buttonPoint(1);val q=600f to 450f
+            val pd=MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            val pu=MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            f.touch(MotionEvent.ACTION_DOWN,p);f.touch(pd,p,q)
+            val before=f.state.cursorX;val scale=f.state.scale
+            f.touch(MotionEvent.ACTION_MOVE,(p.first+100) to p.second,650f to 450f)
+            assertEquals(before+.05f,f.state.cursorX,.001f)
+            assertEquals(scale,f.state.scale,0f)
+            assertTrue(f.sink.events.none {it.kind=="release" || it.kind=="wheel"})
+            f.touch(pu,(p.first+100) to p.second,650f to 450f)
+            val handoff=f.state.cursorX
+            f.touch(MotionEvent.ACTION_MOVE,(p.first+110) to p.second)
+            assertEquals(handoff+.01f,f.state.cursorX,.001f)
+            f.touch(MotionEvent.ACTION_UP,(p.first+110) to p.second)
+            assertEquals(listOf(true,false),f.sink.events.filter {it.kind=="button"}.map {it.down});f.view.release()
+        }}
+    }
+    @Test fun buttonCanJoinAnExistingPictureTouchWithNonzeroPointerId() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            val f=Fixture(activity);val p=f.buttonPoint(2);val q=600f to 450f
+            val pd=MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            f.touch(MotionEvent.ACTION_DOWN,q);f.touch(pd,q,p)
+            f.touch(MotionEvent.ACTION_MOVE,650f to 450f,p)
+            // Lift the original picture finger (id 0), retaining button finger id 1.
+            f.touch(MotionEvent.ACTION_POINTER_UP,650f to 450f,p)
+            val x=f.state.cursorX
+            f.touchIds(MotionEvent.ACTION_MOVE,listOf(1 to ((p.first+10) to p.second)))
+            assertEquals(x+.01f,f.state.cursorX,.001f)
+            f.touchIds(MotionEvent.ACTION_UP,listOf(1 to ((p.first+10) to p.second)))
+            assertEquals(listOf(true,false),f.sink.events.filter {it.kind=="button"}.map {it.down});f.view.release()
+        }}
+    }
+    @Test fun localHandleClampsAndNeverSendsInput() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            val f=Fixture(activity);val b=f.view.floatingMouseBounds
+            val p=b.centerX() to (b.top+b.height()*.8f)
+            val cursor=f.state.cursorX to f.state.cursorY
+            f.touch(MotionEvent.ACTION_DOWN,p)
+            f.touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),p,600f to 450f)
+            f.touch(MotionEvent.ACTION_MOVE,2000f to 2000f,650f to 450f)
+            f.touch(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),2000f to 2000f,650f to 450f)
+            f.touch(MotionEvent.ACTION_UP,2000f to 2000f)
+            assertTrue(f.sink.events.isEmpty());assertEquals(cursor,f.state.cursorX to f.state.cursorY)
+            val moved=f.view.floatingMouseBounds
+            assertEquals(1000f,moved.right,0f);assertEquals(600f,moved.bottom,0f)
+            f.layout(600,1000);val resized=f.view.floatingMouseBounds
+            assertEquals(600f,resized.right,0f);assertEquals(1000f,resized.bottom,0f)
+            f.state.source(2,1,2000,1200)
+            assertNull(f.state.floatingMouseX);assertNull(f.state.floatingMouseY);f.view.release()
+        }}
+    }
+    @Test fun cancellationAndInputModeChangesReleaseAndSuppressRemainingTouches() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            for(reason in 0..4) {
+                val f=Fixture(activity);val p=f.buttonPoint(1)
+                f.touch(MotionEvent.ACTION_DOWN,p)
+                when(reason) {
+                    0->f.touch(MotionEvent.ACTION_CANCEL,p)
+                    1->f.view.trackpad=false
+                    2->{f.sink.enabled=false;f.view.syncInputAvailability()}
+                    3->f.view.remoteSize(1920,1080)
+                    else->f.view.release()
+                }
+                val count=f.sink.events.size
+                if(reason!=0) {
+                    f.touch(MotionEvent.ACTION_MOVE,700f to 450f);f.touch(MotionEvent.ACTION_UP,700f to 450f)
+                }
+                assertTrue(f.sink.events.drop(count).none {it.kind in listOf("move","button","wheel")})
+                assertEquals(listOf(true,false),f.sink.events.filter {it.kind=="button"}.map {it.down});f.view.release()
+            }
+        }}
+    }
+
+    @Test fun liftingButtonFirstSuppressesPictureUntilAllFingersLift() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            val f=Fixture(activity);val p=f.buttonPoint(1);val q=600f to 450f
+            f.touch(MotionEvent.ACTION_DOWN,p)
+            f.touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),p,q)
+            f.touch(MotionEvent.ACTION_POINTER_UP,p,q)
+            val before=f.sink.events.size
+            f.touchIds(MotionEvent.ACTION_MOVE,listOf(1 to (700f to 450f)))
+            f.touchIds(MotionEvent.ACTION_UP,listOf(1 to (700f to 450f)))
+            assertTrue(f.sink.events.drop(before).none {it.kind in listOf("button","move","wheel")})
+            f.sink.events.clear();f.touch(MotionEvent.ACTION_DOWN,q);f.touch(MotionEvent.ACTION_UP,q)
+            assertEquals(listOf(true,false),f.sink.events.filter {it.kind=="button"}.map {it.down});f.view.release()
+        }}
+    }
+    @Test fun bothButtonsReleaseIndependently() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            val f=Fixture(activity);val left=f.buttonPoint(1);val right=f.buttonPoint(2)
+            f.touch(MotionEvent.ACTION_DOWN,left)
+            f.touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),left,right)
+            f.touch(MotionEvent.ACTION_POINTER_UP,left,right)
+            f.touchIds(MotionEvent.ACTION_UP,listOf(1 to right))
+            assertEquals(listOf(1f to true,2f to true,1f to false,2f to false),f.sink.events.filter {it.kind=="button"}.map {it.x to it.down});f.view.release()
+        }}
+    }
+    @Test fun floatingMouseRenderingVisibilityAndPressedFeedback() {
+        ActivityScenario.launch(MainActivity::class.java).use {scenario->scenario.onActivity {activity->
+            val f=Fixture(activity);f.state.floatingMouseX=null;f.state.floatingMouseY=null
+            fun render(name:String):android.graphics.Bitmap {
+                val bitmap=android.graphics.Bitmap.createBitmap(f.view.width,f.view.height,android.graphics.Bitmap.Config.ARGB_8888)
+                f.view.getChildAt(1).draw(android.graphics.Canvas(bitmap))
+                java.io.File(activity.cacheDir,name).outputStream().use {bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+                return bitmap
+            }
+            val b=f.view.floatingMouseBounds;val x=(b.left+b.width()*.2f).toInt();val y=(b.top+b.height()*.2f).toInt()
+            assertEquals(16*activity.resources.displayMetrics.density,1000-b.right,.01f)
+            val normal=render("floating-mouse-landscape.png");val color=normal.getPixel(x,y)
+            assertTrue(android.graphics.Color.alpha(color) in 1..254)
+            f.touch(MotionEvent.ACTION_DOWN,f.buttonPoint(1))
+            val pressed=render("floating-mouse-pressed.png");assertNotEquals(color,pressed.getPixel(x,y))
+            f.touch(MotionEvent.ACTION_UP,f.buttonPoint(1))
+            f.sink.enabled=false;f.view.syncInputAvailability()
+            val disabled=render("floating-mouse-disabled.png");assertEquals(0,disabled.getPixel(x,y))
+            f.sink.enabled=true;f.view.trackpad=false
+            val direct=render("floating-mouse-direct.png");assertEquals(0,direct.getPixel(x,y))
+            f.view.trackpad=true;f.layout(600,1000);render("floating-mouse-portrait.png")
+            normal.recycle();pressed.recycle();disabled.recycle();direct.recycle();f.view.release()
+        }}
+    }
+
 }

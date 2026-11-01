@@ -15,6 +15,5 @@ class WorkspaceState : ViewModel() {
     var editor = JSONObject()
     var editorAdvanced = false
     var remoteFullscreen = false
-    var orientationBeforeFullscreen: Int? = null
     var fullscreenActions = false
 }

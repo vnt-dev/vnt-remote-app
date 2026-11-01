@@ -74,6 +74,7 @@ class ControllerInstrumentedTest {
                 fail("$message: $detail")
             }
             for(transport in listOf("tcp","hybrid","quic")) {
+                scenario.onActivity { assertEquals(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,it.requestedOrientation) }
                 scenario.onActivity { model.connect(JSONObject().put("name","Synthetic $transport").put("host",host).put("port",39875).put("password","android-test").put("transport",transport)) }
                 waitFor("$transport must deliver decoded frames") {model.info!=null&&model.renderStats.optInt("renderFps")>0}
                 var epoch=0L;var frames=0L;scenario.onActivity {
@@ -102,9 +103,7 @@ class ControllerInstrumentedTest {
                 var zoomScale=0f;var zoomCenterX=0f;var zoomCenterY=0f;var zoomFrames=0L
                 scenario.onActivity { activity ->
                     val canvas=activity.findViewById<RemoteCanvas>(R.id.remoteCanvas)
-                    activity.findViewById<android.view.View>(R.id.zoomOriginal).performClick()
-                    assertEquals(1f,model.viewState.scale,0f)
-                    activity.findViewById<android.view.View>(R.id.zoomIn).performClick()
+                    model.viewState.original();model.viewState.zoomBy(1.25f);canvas.refreshView()
                     assertEquals(1.25f,model.viewState.scale,0f)
                     model.viewState.panBy(60f,-40f);canvas.refreshView()
                     zoomScale=model.viewState.scale;zoomCenterX=model.viewState.centerX;zoomCenterY=model.viewState.centerY
@@ -112,11 +111,9 @@ class ControllerInstrumentedTest {
                 }
                 waitFor("zoom and pan must keep decoding without rebuilding the media stream") {model.renderStats.optLong("framesTotal")>zoomFrames}
                 scenario.onActivity {assertEquals("local zoom must not restart MediaCodec",0,decoderStarts)}
-                var originalOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                var originalConfiguration=android.content.res.Configuration.ORIENTATION_PORTRAIT
                 scenario.onActivity { activity ->
-                    originalOrientation=activity.requestedOrientation
-                    originalConfiguration=activity.resources.configuration.orientation
+                    assertEquals(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,activity.requestedOrientation)
+                    assertEquals(android.content.res.Configuration.ORIENTATION_LANDSCAPE,activity.resources.configuration.orientation)
                     activity.findViewById<android.view.View>(R.id.fullscreenToggle).performClick()
                     assertEquals(android.view.View.GONE,activity.findViewById<android.view.View>(R.id.remoteHeader).visibility)
                     assertEquals(android.view.View.GONE,activity.findViewById<android.view.View>(R.id.remoteActionScroll).visibility)
@@ -137,7 +134,7 @@ class ControllerInstrumentedTest {
                     val canvas=activity?.findViewById<android.view.View>(R.id.remoteCanvas)
                     val insets=canvas?.let {androidx.core.view.ViewCompat.getRootWindowInsets(it)}
                     activity?.resources?.configuration?.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
-                        activity.requestedOrientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE &&
+                        activity.requestedOrientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE &&
                         canvas!=null && canvas.width>canvas.height &&
                         insets!=null && canvas.height==canvas.rootView.height-insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.displayCutout()).top-insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.displayCutout()).bottom &&
                         (canvas.right<=activity.findViewById<android.view.View>(R.id.fullscreenControls).left || activity.findViewById<android.view.View>(R.id.fullscreenControls).right<=canvas.left) &&
@@ -164,10 +161,10 @@ class ControllerInstrumentedTest {
                     assertNotNull(model.info)
                     assertEquals(zoomScale,model.viewState.scale,0f)
                 }
-                waitFor("leaving fullscreen must restore the previous orientation",5000) {
+                waitFor("leaving fullscreen must keep landscape",5000) {
                     androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
                         .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<MainActivity>().any {
-                            it.requestedOrientation==originalOrientation && it.resources.configuration.orientation==originalConfiguration
+                            it.requestedOrientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE && it.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE
                         }
                 }
                 if(transport=="quic") {
@@ -182,10 +179,10 @@ class ControllerInstrumentedTest {
                 scenario.onActivity {model.disconnect()}
                 waitFor("disconnect must end the session",5000) {model.info==null&&!model.connecting}
                 scenario.onActivity {assertTrue(model.viewState.fitting);assertFalse(model.viewState.movePicture)}
-                waitFor("disconnect must restore the previous orientation",5000) {
+                waitFor("disconnect must return to portrait",5000) {
                     androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
                         .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<MainActivity>().any {
-                            it.requestedOrientation==originalOrientation && it.resources.configuration.orientation==originalConfiguration
+                            it.requestedOrientation==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT && it.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT
                         }
                 }
             }

@@ -60,9 +60,6 @@ class MainActivity : AppCompatActivity() {
         workspaceState = ViewModelProvider(this)[WorkspaceState::class.java]
         savedInstanceState?.let {
             workspaceState.page = it.getInt("workspacePage", workspaceState.page)
-            if (workspaceState.orientationBeforeFullscreen==null && it.containsKey("orientationBeforeFullscreen")) {
-                workspaceState.orientationBeforeFullscreen=it.getInt("orientationBeforeFullscreen")
-            }
         }
         workspace = WorkspaceUi(this, binding, model, workspaceState)
         remotePage = model.info != null
@@ -75,7 +72,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.fullscreenMenu.setOnClickListener {
-            input.release()
+            binding.remoteCanvas.release()
             workspaceState.fullscreenActions=!workspaceState.fullscreenActions
             applyRemoteLayout(true)
         }
@@ -97,7 +94,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() { binding.remoteCanvas.onViewChanged=null; input.clear(); binding.remoteCanvas.release(); super.onDestroy() }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("workspacePage",workspaceState.page)
-        workspaceState.orientationBeforeFullscreen?.let {outState.putInt("orientationBeforeFullscreen",it)}
         super.onSaveInstanceState(outState)
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -109,7 +105,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private fun setFullscreen(enabled:Boolean) {
-        input.release()
+        binding.remoteCanvas.release()
         workspaceState.remoteFullscreen=enabled
         workspaceState.fullscreenActions=false
         applyRemoteLayout(remotePage && (model.info!=null || model.connecting))
@@ -117,13 +113,8 @@ class MainActivity : AppCompatActivity() {
     private fun applyRemoteLayout(showRemote:Boolean) {
         if (!showRemote) {workspaceState.remoteFullscreen=false;workspaceState.fullscreenActions=false}
         val fullscreen=showRemote && workspaceState.remoteFullscreen
-        if (fullscreen) {
-            if (workspaceState.orientationBeforeFullscreen==null) workspaceState.orientationBeforeFullscreen=requestedOrientation
-            if (requestedOrientation!=ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else workspaceState.orientationBeforeFullscreen?.let { previous ->
-            workspaceState.orientationBeforeFullscreen=null
-            if (requestedOrientation!=previous) requestedOrientation=previous
-        }
+        val orientation=if(showRemote) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        if (requestedOrientation!=orientation) requestedOrientation=orientation
         binding.remoteHeader.visibility=if(fullscreen)View.GONE else View.VISIBLE
         binding.remoteStats.visibility=if(fullscreen)View.GONE else View.VISIBLE
         binding.inputHint.visibility=if(fullscreen)View.GONE else View.VISIBLE
@@ -208,10 +199,11 @@ class MainActivity : AppCompatActivity() {
         val actions=binding.remoteActions
         actions.addView(button("全屏") {setFullscreen(true)}.apply {id=R.id.fullscreenToggle})
         actions.addView(button("适应窗口") {binding.remoteCanvas.resetZoom()}.apply {id=R.id.zoomFit})
-        actions.addView(button("原尺寸") {binding.remoteCanvas.originalSize()}.apply {id=R.id.zoomOriginal;contentDescription="原尺寸：视频像素一比一显示"})
-        actions.addView(button("缩小") {binding.remoteCanvas.zoomBy(1f/1.25f);showZoomToast()}.apply {id=R.id.zoomOut})
-        actions.addView(button("放大") {binding.remoteCanvas.zoomBy(1.25f);showZoomToast()}.apply {id=R.id.zoomIn})
-        actions.addView(button("触控板") {binding.remoteCanvas.trackpad=!binding.remoteCanvas.trackpad}.apply {id=R.id.pointerMode})
+        actions.addView(button("触控板") {
+            val canvas=binding.remoteCanvas
+            canvas.trackpad=!canvas.trackpad
+            showCenterToast(if(canvas.trackpad) "触控板：按住悬浮左右键可拖动；拖动鼠标底部调整位置" else "直接触控：轻点点击，滑动拖动，长按右键；双指捏合缩放")
+        }.apply {id=R.id.pointerMode})
         actions.addView(button("按键") {keyDialog()}.apply{tag="input"})
         actions.addView(button("发送文本") {sendText()}.apply{tag="clipboard"})
         actions.addView(button("剪贴板 ↑") {clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.let {model.clipboard(it)}}.apply{tag="clipboard"})
@@ -225,6 +217,7 @@ class MainActivity : AppCompatActivity() {
     }
     private fun updateViewControls() {
         val canvas=binding.remoteCanvas
+        canvas.syncInputAvailability()
         val pointerTitle=if(canvas.trackpad)"触控板" else "直接触控"
         binding.remoteActions.findViewById<TextView>(R.id.pointerMode)?.let {if(it.text.toString()!=pointerTitle)it.text=pointerTitle}
         if(binding.movePicture.isChecked!=canvas.movePicture) {
@@ -233,12 +226,11 @@ class MainActivity : AppCompatActivity() {
         val gestures=if(canvas.movePicture)"双指平移画面 · 捏合缩放" else "双指滚动远端 · 捏合缩放"
         val hint=when {
             model.viewOnly && model.info!=null -> if(canvas.movePicture)"仅观看 · 双指平移画面 · 捏合缩放" else "仅观看 · 捏合缩放 · 开启移动画面可双指平移"
-            canvas.trackpad -> "单指移动 · 轻点点击 · 长按拖动 · $gestures"
+            canvas.trackpad -> "单指移动 · 轻点点击 · 按住悬浮左右键拖动 · 拖动底部调整位置 · $gestures"
             else -> "轻点点击 · 滑动拖动 · 长按右键 · $gestures"
         }
         if(binding.inputHint.text.toString()!=hint)binding.inputHint.text=hint
     }
-    private fun showZoomToast() = showCenterToast(String.format(Locale.ROOT,"当前倍率：%.2f×",binding.remoteCanvas.viewState.scale))
     @Suppress("DEPRECATION")
     private fun showCenterToast(message:String) {
         centerToast?.cancel()

@@ -12,8 +12,5 @@
     <item name="serverSave" type="id" />
     <item name="fullscreenToggle" type="id" />
     <item name="zoomFit" type="id" />
-    <item name="zoomOriginal" type="id" />
-    <item name="zoomOut" type="id" />
-    <item name="zoomIn" type="id" />
     <item name="pointerMode" type="id" />
 </resources>
