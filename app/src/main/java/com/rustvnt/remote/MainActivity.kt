@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private var centerToast: Toast? = null
     private var textDialog = false
     private var applyingClipboard = false
+    private var clipboardDownloadPending = false
     private var lastClipboard: String? = null
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         if (!applyingClipboard && model.foreground && model.info?.optBoolean("clipboardEnabled") == true && !model.viewOnly) {
@@ -211,9 +212,20 @@ class MainActivity : AppCompatActivity() {
         updateKeyboard()
         if (event == "client://clipboard" && model.foreground) {
             model.clipboardText?.let { text ->
-                applyingClipboard=true; lastClipboard=text; clipboard.setPrimaryClip(ClipData.newPlainText("VNT Remote",text)); applyingClipboard=false
+                try {
+                    applyingClipboard = true
+                    clipboard.setPrimaryClip(ClipData.newPlainText("VNT Remote", text))
+                    lastClipboard = text
+                    if (clipboardDownloadPending) Toast.makeText(this, if (text.isEmpty()) "远端没有复制内容" else "已同步到本地剪贴板", Toast.LENGTH_SHORT).show()
+                } catch (e: RuntimeException) {
+                    Toast.makeText(this, "写入本地剪贴板失败", Toast.LENGTH_SHORT).show()
+                } finally {
+                    applyingClipboard = false
+                    clipboardDownloadPending = false
+                }
             }
         }
+        if (event == "client://error" || event == "error" || event == "client://closed" || event == "closed") clipboardDownloadPending = false
         if (!showRemote) workspace.onModelEvent(event)
         if (model.error.isNotEmpty()) { Toast.makeText(this,model.error,Toast.LENGTH_LONG).show(); model.clearError() }
     }
@@ -235,8 +247,21 @@ class MainActivity : AppCompatActivity() {
         actions.addView(button("键盘") {showKeyboard(!workspaceState.keyboardVisible)}.apply {id=R.id.keyboardToggle; tag="input"})
         actions.addView(button("按键") {keyDialog()}.apply{tag="input"})
         actions.addView(button("发送文本") {sendText()}.apply{tag="clipboard"})
-        actions.addView(button("剪贴板 ↑") {clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.let {model.clipboard(it)}}.apply{tag="clipboard"})
-        actions.addView(button("剪贴板 ↓") {model.clipboard()}.apply{tag="clipboard"})
+        actions.addView(button("剪贴板 ↑") {
+            try {
+                val clip = clipboard.primaryClip
+                val text = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).text?.toString() else null
+                if (text.isNullOrEmpty()) Toast.makeText(this, "没有复制内容", Toast.LENGTH_SHORT).show()
+                else if (model.clipboard(text)) Toast.makeText(this, "已同步到远端", Toast.LENGTH_SHORT).show()
+            } catch (e: RuntimeException) {
+                Toast.makeText(this, "读取本地剪贴板失败", Toast.LENGTH_SHORT).show()
+            }
+        }.apply{tag="clipboard"})
+        actions.addView(button("剪贴板 ↓") {
+            clipboardDownloadPending = true
+            Toast.makeText(this, "正在获取远端剪贴板", Toast.LENGTH_SHORT).show()
+            model.clipboard()
+        }.apply{tag="clipboard"})
         actions.addView(button("Ctrl+Alt+Del") {model.command("sas")}.apply{tag="sas"})
         for (i in 0 until actions.childCount) (actions.getChildAt(i) as? MaterialButton)?.apply {
             setTextColor(Color.parseColor("#A2ABBD")); iconTint=android.content.res.ColorStateList.valueOf(Color.parseColor("#A2ABBD"))

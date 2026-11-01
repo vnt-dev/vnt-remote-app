@@ -75,8 +75,8 @@ class RemoteModel(application: Application) : AndroidViewModel(application), Nat
     val viewOnly: Boolean get() = info?.optBoolean("viewOnly", true) ?: true
     val canInput: Boolean get() = info != null && foreground && controlOnline && !switching && !viewOnly
     val screen: JSONObject? get() = (0 until screens.length()).map { screens.getJSONObject(it) }.firstOrNull { it.optInt("streamId") == activeStream }
-    private fun send(command: JSONObject) {
-        try { bridge.command(command.toString()) } catch (e: RuntimeException) { error = e.message ?: "原生核心不可用"; listener?.invoke("error") }
+    private fun send(command: JSONObject): Boolean {
+        return try { bridge.command(command.toString()); true } catch (e: RuntimeException) { error = e.message ?: "原生核心不可用"; listener?.invoke("error"); false }
     }
     fun command(op: String, fill: JSONObject.() -> Unit = {}) = send(JSONObject().put("op", op).put("epoch", epoch).apply(fill))
     private fun persist() { store.save(config) }
