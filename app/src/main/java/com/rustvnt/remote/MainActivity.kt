@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity() {
         binding.remoteKeyboard.bind(
             allowed = { model.canInput && window.decorView.hasWindowFocus() },
             route = { "${model.epoch}:${model.activeStream}:${model.screen?.optInt("generation")}:${model.revision}" },
+            release = { input.release() },
             send = { scan, down -> input.key(scan.code, scan.extended, down) }
         )
         binding.remoteKeyboard.close = { showKeyboard(false) }
@@ -122,10 +123,11 @@ class MainActivity : AppCompatActivity() {
         updateKeyboard()
     }
     private fun updateKeyboard() {
-        if (!remotePage || model.info == null) workspaceState.keyboardVisible = false
+        if (!remotePage || model.info == null || model.viewOnly) workspaceState.keyboardVisible = false
         binding.remoteKeyboard.visibility = if (workspaceState.keyboardVisible) View.VISIBLE else View.GONE
         binding.remoteKeyboard.sync(model.info?.optString("remoteSystem") ?: "")
         binding.fullscreenKeyboard.isEnabled = model.canInput
+        binding.fullscreenKeyboard.visibility = if (model.viewOnly) View.GONE else View.VISIBLE
         binding.fullscreenKeyboard.isSelected = workspaceState.keyboardVisible
         binding.fullscreenKeyboard.text = if (workspaceState.keyboardVisible) "收起键盘" else "键盘"
         binding.remoteActions.findViewById<TextView>(R.id.keyboardToggle)?.text = if (workspaceState.keyboardVisible) "收起键盘" else "键盘"
@@ -158,7 +160,7 @@ class MainActivity : AppCompatActivity() {
         )
         binding.fullscreenMenu.text=if(workspaceState.fullscreenActions)"收起操作" else "操作"
         binding.remoteActions.findViewById<MaterialButton>(R.id.fullscreenToggle)?.visibility=if(fullscreen)View.GONE else View.VISIBLE
-        binding.remoteActions.findViewById<MaterialButton>(R.id.keyboardToggle)?.visibility=if(fullscreen)View.GONE else View.VISIBLE
+        binding.remoteActions.findViewById<MaterialButton>(R.id.keyboardToggle)?.visibility=if(fullscreen || model.viewOnly)View.GONE else View.VISIBLE
         if (appliedFullscreen!=fullscreen) {
             // DrawerLayout keeps legacy inset margins after bars disappear; clear them
             // so the video viewport can use the entire window in immersive mode.
@@ -202,10 +204,12 @@ class MainActivity : AppCompatActivity() {
         updateViewControls()
         for (i in 0 until binding.remoteActions.childCount) {
             val action = binding.remoteActions.getChildAt(i)
+            if (action.tag == "input" || action.tag == "clipboard") {
+                action.visibility = if (model.viewOnly || (action.id == R.id.keyboardToggle && workspaceState.remoteFullscreen)) View.GONE else View.VISIBLE
+            }
             action.isEnabled = when (action.tag) {
                 "input" -> model.canInput
                 "clipboard" -> model.canInput && model.info?.optBoolean("clipboardEnabled") == true
-                "sas" -> model.canInput && model.info?.optString("hostEdition") == "installed"
                 else -> true
             }
         }
@@ -243,7 +247,7 @@ class MainActivity : AppCompatActivity() {
             val canvas=binding.remoteCanvas
             canvas.trackpad=!canvas.trackpad
             showCenterToast(if(canvas.trackpad) "触控板：按住悬浮左右键可拖动；拖动鼠标底部调整位置" else "直接触控：轻点点击，滑动拖动，长按右键；双指捏合缩放")
-        }.apply {id=R.id.pointerMode})
+        }.apply {id=R.id.pointerMode; tag="input"})
         actions.addView(button("键盘") {showKeyboard(!workspaceState.keyboardVisible)}.apply {id=R.id.keyboardToggle; tag="input"})
         actions.addView(button("按键") {keyDialog()}.apply{tag="input"})
         actions.addView(button("发送文本") {sendText()}.apply{tag="clipboard"})
@@ -262,7 +266,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "正在获取远端剪贴板", Toast.LENGTH_SHORT).show()
             model.clipboard()
         }.apply{tag="clipboard"})
-        actions.addView(button("Ctrl+Alt+Del") {model.command("sas")}.apply{tag="sas"})
         for (i in 0 until actions.childCount) (actions.getChildAt(i) as? MaterialButton)?.apply {
             setTextColor(Color.parseColor("#A2ABBD")); iconTint=android.content.res.ColorStateList.valueOf(Color.parseColor("#A2ABBD"))
         }
@@ -310,13 +313,22 @@ class MainActivity : AppCompatActivity() {
             meta to listOf(0x5b to true), "F5" to listOf(0x3f to false)
         )
         if (mac) choices += "Command+V" to listOf(0x5b to true, 0x2f to false)
+        val sasIndex = if (supportsSas()) choices.size else -1
+        val labels = choices.map { it.first }.toMutableList()
+        if (sasIndex >= 0) labels += "Ctrl+Alt+Del"
         val route = "${model.epoch}:${model.activeStream}:${model.screen?.optInt("generation")}:${model.revision}"
-        MaterialAlertDialogBuilder(this).setTitle("发送按键").setItems(choices.map { it.first }.toTypedArray()){_,i->
+        MaterialAlertDialogBuilder(this).setTitle("发送按键").setItems(labels.toTypedArray()){_,i->
             if (!model.canInput || route != "${model.epoch}:${model.activeStream}:${model.screen?.optInt("generation")}:${model.revision}") return@setItems
+            if (i == sasIndex) {
+                if (supportsSas()) model.command("sas")
+                return@setItems
+            }
             val sequence=choices[i].second
             sequence.forEach{input.key(it.first,it.second,true)};sequence.reversed().forEach{input.key(it.first,it.second,false)}
         }.show()
     }
+
+    private fun supportsSas() = model.info?.optString("remoteSystem") == "windows" && model.info?.optString("hostEdition") == "installed"
 
     private fun sendText() {
         if(!model.canInput||model.info?.optBoolean("clipboardEnabled")!=true){Toast.makeText(this,"需要允许控制与文本剪贴板",Toast.LENGTH_SHORT).show();return}

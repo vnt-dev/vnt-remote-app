@@ -40,11 +40,22 @@ class RemoteKeyboardInstrumentedTest {
             fun key(scan: Int, extended: Boolean = false) = views.first { it.tag == "key:$scan:$extended" }
             assertEquals(2,views.filterIsInstance<TextView>().count { it.text == "Command" })
             text("开启组合键").performClick()
-            assertFalse(text("发送组合键").isEnabled)
+            assertTrue(text("开启组合键").isEnabled)
+            assertTrue(text("开启组合键").isSelected)
+            text("开启组合键").performClick()
+            assertFalse(text("开启组合键").isSelected)
+            assertTrue(events.isEmpty())
+            text("开启组合键").performClick()
+            key(0x1d).performClick()
+            assertTrue(text("发送组合键").isSelected)
+            key(0x1d).performClick()
+            assertTrue(text("开启组合键").isSelected)
+            assertTrue(events.isEmpty())
             key(0x5b,true).performClick(); key(0x2e).performClick()
             assertTrue(key(0x5b,true).isSelected); assertTrue(key(0x2e).isSelected)
             assertTrue(events.isEmpty())
             text("发送组合键").performClick()
+            assertFalse(text("开启组合键").isSelected)
             assertEquals(listOf(Keymap.Scan(0x5b,true) to true,Keymap.Scan(0x2e) to true,Keymap.Scan(0x2e) to false,Keymap.Scan(0x5b,true) to false),events)
             events.clear()
             assertFalse(key(0x2e).isSelected)
@@ -60,6 +71,149 @@ class RemoteKeyboardInstrumentedTest {
             assertEquals(listOf(Keymap.Scan(0x2e) to true,Keymap.Scan(0x2e) to false),events)
         } }
     }
+    @Test fun multitouchHoldsAltAcrossRepeatedTabAndReleasesOnCancellation() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario -> scenario.onActivity { activity ->
+            val keyboard = RemoteKeyboardView(activity)
+            var allowed = true
+            var route = "one"
+            var resets = 0
+            val events = mutableListOf<Pair<Keymap.Scan, Boolean>>()
+            keyboard.bind({ allowed }, { route }, { resets++ }) { scan, down -> events += scan to down }
+            keyboard.sync("windows")
+            val host = FrameLayout(activity)
+            host.addView(keyboard, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM))
+            activity.setContentView(host)
+            host.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(2400, View.MeasureSpec.EXACTLY))
+            host.layout(0, 0, 1080, 2400)
+            val views = descendants(keyboard)
+            fun key(scan: Int) = views.first { it.tag == "key:$scan:false" }
+            fun point(scan: Int): Pair<Float, Float> {
+                val view = key(scan)
+                val rect = android.graphics.Rect()
+                view.getDrawingRect(rect)
+                keyboard.offsetDescendantRectToMyCoords(view, rect)
+                return rect.exactCenterX() to rect.exactCenterY()
+            }
+            val alt = Keymap.Scan(0x38)
+            val tab = Keymap.Scan(0x0f)
+            val now = SystemClock.uptimeMillis()
+            var tick = 0L
+            fun touch(action: Int, vararg fingers: Pair<Int, Pair<Float, Float>>) {
+                val properties = fingers.map { (id, _) -> MotionEvent.PointerProperties().apply { this.id = id; toolType = MotionEvent.TOOL_TYPE_FINGER } }.toTypedArray()
+                val coordinates = fingers.map { (_, xy) -> MotionEvent.PointerCoords().apply { x = xy.first; y = xy.second; pressure = 1f; size = 1f } }.toTypedArray()
+                val event = MotionEvent.obtain(now, now + ++tick, action, fingers.size, properties, coordinates, 0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0)
+                assertTrue(keyboard.dispatchTouchEvent(event)); event.recycle()
+            }
+            val a = 7 to point(0x38)
+            val t = 19 to point(0x0f)
+            touch(MotionEvent.ACTION_DOWN, a)
+            assertEquals(listOf(alt to true), events)
+            assertTrue(key(0x38).isSelected)
+            repeat(2) {
+                touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), a, t)
+                touch(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), a, t)
+                assertTrue(key(0x38).isSelected)
+            }
+            touch(MotionEvent.ACTION_UP, a)
+            assertEquals(listOf(alt to true, tab to true, tab to false, tab to true, tab to false, alt to false), events)
+            assertFalse(key(0x38).isSelected)
+            events.clear()
+            // Lifting the first pointer must leave the second key held.
+            touch(MotionEvent.ACTION_DOWN, a)
+            touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), a, t)
+            touch(MotionEvent.ACTION_POINTER_UP, a, t)
+            assertTrue(key(0x0f).isSelected)
+            touch(MotionEvent.ACTION_UP, t)
+            assertEquals(listOf(alt to true, tab to true, alt to false, tab to false), events)
+            events.clear()
+            touch(MotionEvent.ACTION_DOWN, a)
+            touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), a, t)
+            touch(MotionEvent.ACTION_CANCEL, a, t)
+            assertEquals(listOf(alt to true, tab to true, tab to false, alt to false), events)
+            events.clear()
+            touch(MotionEvent.ACTION_DOWN, a)
+            touch(MotionEvent.ACTION_MOVE, 7 to (0f to 0f))
+            touch(MotionEvent.ACTION_UP, 7 to (0f to 0f))
+            assertEquals(listOf(alt to true, alt to false), events)
+            events.clear()
+            // Multiple fingers on the same key only release it when the last finger leaves.
+            touch(MotionEvent.ACTION_DOWN, a)
+            touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), a, 19 to a.second)
+            touch(MotionEvent.ACTION_POINTER_UP, a, 19 to a.second)
+            assertEquals(listOf(alt to true), events)
+            touch(MotionEvent.ACTION_UP, 19 to a.second)
+            assertEquals(listOf(alt to true, alt to false), events)
+            events.clear()
+            touch(MotionEvent.ACTION_DOWN, a)
+            keyboard.visibility = View.GONE
+            assertEquals(listOf(alt to true, alt to false), events)
+            keyboard.visibility = View.VISIBLE
+            touch(MotionEvent.ACTION_UP, a)
+            events.clear()
+            touch(MotionEvent.ACTION_DOWN, a)
+            allowed = false; keyboard.sync("windows")
+            assertEquals(1, resets)
+            allowed = true; keyboard.sync("windows")
+            touch(MotionEvent.ACTION_UP, a)
+            assertEquals(listOf(alt to true), events)
+            events.clear()
+            touch(MotionEvent.ACTION_DOWN, a)
+            route = "two"; keyboard.sync("windows")
+            assertEquals(2, resets)
+            touch(MotionEvent.ACTION_UP, a)
+            assertEquals(listOf(alt to true), events)
+            events.clear()
+            // Composition still selects locally on touch-up and sends only on request.
+            val combo = views.filterIsInstance<TextView>().first { it.text == "开启组合键" }
+            combo.performClick()
+            touch(MotionEvent.ACTION_DOWN, a)
+            touch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), a, t)
+            touch(MotionEvent.ACTION_POINTER_UP, a, t)
+            touch(MotionEvent.ACTION_UP, t)
+            assertTrue(events.isEmpty())
+            assertEquals("发送组合键", combo.text.toString())
+            combo.performClick()
+            assertEquals(listOf(alt to true, tab to true, tab to false, alt to false), events)
+        } }
+    }
+
+    @Test fun keyboardRowsFitBesideFullscreenToolbar() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val model = ViewModelProvider(activity)[RemoteModel::class.java]
+                model.onEvent("client://connecting", """{"epoch":1}""")
+                model.onEvent("client://connected", """{"epoch":1,"viewOnly":false,"remoteSystem":"windows","screens":[]}""")
+            }
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("按键"))
+                .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isDisplayed()))
+            scenario.onActivity { activity ->
+                activity.findViewById<View>(R.id.keyboardToggle).performClick()
+                activity.findViewById<View>(R.id.fullscreenToggle).performClick()
+            }
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("开启组合键"))
+                .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isDisplayed()))
+            scenario.onActivity { activity ->
+                val keyboard = activity.findViewById<RemoteKeyboardView>(R.id.remoteKeyboard)
+                val toolbar = activity.findViewById<View>(R.id.fullscreenControls)
+                val origin = IntArray(2); keyboard.getLocationOnScreen(origin)
+                val toolbarOrigin = IntArray(2); toolbar.getLocationOnScreen(toolbarOrigin)
+                assertTrue(keyboard.width > 0)
+                assertTrue("Keyboard must stop before the right toolbar", origin[0] + keyboard.width <= toolbarOrigin[0])
+                for (key in descendants(keyboard).filter { it.tag?.toString()?.startsWith("key:") == true }) {
+                    val rect = android.graphics.Rect()
+                    key.getDrawingRect(rect)
+                    keyboard.offsetDescendantRectToMyCoords(key, rect)
+                    assertTrue("Key ${key.tag} must fit horizontally: $rect / ${keyboard.width}", rect.left >= 0 && rect.right <= keyboard.width)
+                }
+                val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+                java.io.File(activity.cacheDir, "keyboard-width.png").outputStream().use {
+                    screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }
+                screenshot.recycle()
+            }
+        }
+    }
+
     @Test fun overlayConsumesBlankTouchesAndLeavesCanvasSizeUnchanged() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario -> scenario.onActivity { activity ->
             val host=FrameLayout(activity)
